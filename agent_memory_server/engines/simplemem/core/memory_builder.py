@@ -2,21 +2,24 @@
 Memory Builder
 Stage 1: Semantic Structured Compression (Section 3.1)
 & Stage 2: Online Semantic Synthesis (Section 3.2)
+
 Implements:
 - Implicit semantic density gating: Φ_gate(W) → {m_k} (filters low-density windows)
 - Sliding window processing for dialogue segmentation
 - Generates compact memory units with resolved coreferences and absolute timestamps
 """
 
-from typing import List, Optional
-from models.memory_entry import MemoryEntry, Dialogue
-from utils.llm_client import LLMClient
-from database.vector_store import VectorStore
-import config
-import json
-import asyncio
 import concurrent.futures
-from functools import partial
+
+from agent_memory_server.config import settings
+from agent_memory_server.engines.simplemem.adapters.llm_client import LLMClientAdapter
+from agent_memory_server.engines.simplemem.adapters.memory_entry import (
+    Dialogue,
+    SimpleMemMemoryEntry as MemoryEntry,
+)
+from agent_memory_server.engines.simplemem.adapters.vector_store import (
+    VectorStoreAdapter,
+)
 
 
 class MemoryBuilder:
@@ -32,38 +35,36 @@ class MemoryBuilder:
 
     def __init__(
         self,
-        llm_client: LLMClient,
-        vector_store: VectorStore,
+        llm_client: LLMClientAdapter = None,
+        vector_store: VectorStoreAdapter = None,
         window_size: int = None,
         enable_parallel_processing: bool = True,
         max_parallel_workers: int = 3,
+        namespace: str = "simplemem",
+        user_id: str = None,
     ):
-        self.llm_client = llm_client
-        self.vector_store = vector_store
-        self.window_size = window_size or config.WINDOW_SIZE
-        self.overlap_size = getattr(config, "OVERLAP_SIZE", 0)
-        # step_size is how far the window advances each iteration; overlap retains
-        # the last overlap_size dialogues so the next window has continuity context
+        self.llm_client = llm_client or LLMClientAdapter()
+        self.vector_store = vector_store or VectorStoreAdapter(
+            namespace=namespace, user_id=user_id
+        )
+        self.window_size = window_size or getattr(settings, "WINDOW_SIZE", 10)
+        self.overlap_size = getattr(settings, "OVERLAP_SIZE", 0)
         self.step_size = max(1, self.window_size - self.overlap_size)
 
-        # Use config values as default if not explicitly provided
         self.enable_parallel_processing = (
             enable_parallel_processing
             if enable_parallel_processing is not None
-            else getattr(config, "ENABLE_PARALLEL_PROCESSING", True)
+            else getattr(settings, "ENABLE_PARALLEL_PROCESSING", True)
         )
         self.max_parallel_workers = (
             max_parallel_workers
             if max_parallel_workers is not None
-            else getattr(config, "MAX_PARALLEL_WORKERS", 4)
+            else getattr(settings, "MAX_PARALLEL_WORKERS", 4)
         )
 
-        # Dialogue buffer
-        self.dialogue_buffer: List[Dialogue] = []
+        self.dialogue_buffer: list[Dialogue] = []
         self.processed_count = 0
-
-        # Previous window entries (for context)
-        self.previous_entries: List[MemoryEntry] = []
+        self.previous_entries: list[MemoryEntry] = []
 
     def add_dialogue(self, dialogue: Dialogue, auto_process: bool = True):
         """
@@ -75,10 +76,7 @@ class MemoryBuilder:
         if auto_process and len(self.dialogue_buffer) >= self.window_size:
             self.process_window()
 
-    def add_dialogues(self, dialogues: List[Dialogue], auto_process: bool = True):
-        """
-        Batch add dialogues with optional parallel processing
-        """
+    def add_dialogues(self, dialogues: list[Dialogue], auto_process: bool = True):
         if self.enable_parallel_processing and len(dialogues) > self.window_size * 2:
             # Use parallel processing for large batches
             self.add_dialogues_parallel(dialogues)
@@ -92,7 +90,7 @@ class MemoryBuilder:
                 while len(self.dialogue_buffer) >= self.window_size:
                     self.process_window()
 
-    def add_dialogues_parallel(self, dialogues: List[Dialogue]):
+    def add_dialogues_parallel(self, dialogues: list[Dialogue]):
         """
         Add dialogues using parallel processing for better performance
         """
@@ -165,7 +163,7 @@ class MemoryBuilder:
         # Store to database
         if entries:
             self.vector_store.add_entries(entries)
-            self.previous_entries = entries  # Save as context
+            self.previous_entries = entries
             self.processed_count += len(window)
 
         print(f"Generated {len(entries)} memory entries")
@@ -185,7 +183,7 @@ class MemoryBuilder:
             self.dialogue_buffer = []
             print(f"Generated {len(entries)} memory entries")
 
-    def _generate_memory_entries(self, dialogues: List[Dialogue]) -> List[MemoryEntry]:
+    def _generate_memory_entries(self, dialogues: list[Dialogue]) -> list[MemoryEntry]:
         """
         Implicit Semantic Density Gating (Section 3.1)
         Φ_gate(W) → {m_k}, generates compact memory units from dialogue window
@@ -198,7 +196,7 @@ class MemoryBuilder:
         context = ""
         if self.previous_entries:
             context = "\n[Previous Window Memory Entries (for reference to avoid duplication)]\n"
-            for entry in self.previous_entries[:3]:  # Only show first 3
+            for entry in self.previous_entries[:3]:
                 context += f"- {entry.lossless_restatement}\n"
 
         # Build prompt
@@ -215,11 +213,12 @@ class MemoryBuilder:
 
         # Retry up to 3 times if parsing fails
         max_retries = 3
+        use_json_format = getattr(settings, "USE_JSON_FORMAT", False)
         for attempt in range(max_retries):
             try:
                 # Use JSON format if configured
                 response_format = None
-                if hasattr(config, "USE_JSON_FORMAT") and config.USE_JSON_FORMAT:
+                if use_json_format:
                     response_format = {"type": "json_object"}
 
                 response = self.llm_client.chat_completion(
@@ -235,7 +234,7 @@ class MemoryBuilder:
                     print(
                         f"Attempt {attempt + 1}/{max_retries} failed to parse LLM response: {e}"
                     )
-                    print(f"Retrying...")
+                    print("Retrying...")
                 else:
                     print(
                         f"All {max_retries} attempts failed to parse LLM response: {e}"
@@ -246,7 +245,7 @@ class MemoryBuilder:
                     return []
 
     def _build_extraction_prompt(
-        self, dialogue_text: str, dialogue_ids: List[int], context: str
+        self, dialogue_text: str, dialogue_ids: list[int], context: str
     ) -> str:
         """
         Build LLM extraction prompt
@@ -294,66 +293,12 @@ Return a JSON array, each element is a memory entry:
 ]
 ```
 
-[Example]
-Dialogues:
-[2025-11-15T14:30:00] Alice: Bob, let's meet at Starbucks tomorrow at 2pm to discuss the new product
-[2025-11-15T14:31:00] Bob: Okay, I'll prepare the materials
-
-Output:
-```json
-[
-  {{
-    "lossless_restatement": "Alice suggested at 2025-11-15T14:30:00 to meet with Bob at Starbucks on 2025-11-16T14:00:00 to discuss the new product.",
-    "keywords": ["Alice", "Bob", "Starbucks", "new product", "meeting"],
-    "timestamp": "2025-11-16T14:00:00",
-    "location": "Starbucks",
-    "persons": ["Alice", "Bob"],
-    "entities": ["new product"],
-    "topic": "Product discussion meeting arrangement"
-  }},
-  {{
-    "lossless_restatement": "Bob agreed to attend the meeting and committed to prepare relevant materials.",
-    "keywords": ["Bob", "prepare materials", "agree"],
-    "timestamp": null,
-    "location": null,
-    "persons": ["Bob"],
-    "entities": [],
-    "topic": "Meeting preparation confirmation"
-  }}
-]
-```
-
-[Example - Time Revision]
-Dialogues:
-[2025-11-15T14:30:00] Alice: Bob, let's meet tomorrow at 2pm
-[2025-11-15T14:31:00] Bob: I can't tomorrow, how about 10am the day after?
-[2025-11-15T14:32:00] Alice: I have to work out that day, how about 9am?
-
-Output:
-```json
-[
-  {{
-    "lossless_restatement": "Alice and Bob agreed to meet at 9am on 2025-11-17 (the day after tomorrow). Earlier proposals of 2pm on 2025-11-16 and 10am on 2025-11-17 were revised.",
-    "keywords": ["Alice", "Bob", "meeting", "9am", "revision"],
-    "timestamp": "2025-11-17T09:00:00",
-    "location": null,
-    "persons": ["Alice", "Bob"],
-    "entities": [],
-    "topic": "Meeting arrangement with time revision"
-  }}
-]
-```
-
 Now process the above dialogues. Return ONLY the JSON array, no other explanations.
 """
 
     def _parse_llm_response(
-        self, response: str, dialogue_ids: List[int]
-    ) -> List[MemoryEntry]:
-        """
-        Parse LLM response to MemoryEntry list
-        """
-        # Extract JSON
+        self, response: str, dialogue_ids: list[int]
+    ) -> list[MemoryEntry]:
         data = self.llm_client.extract_json(response)
 
         if not isinstance(data, list):
@@ -361,7 +306,6 @@ Now process the above dialogues. Return ONLY the JSON array, no other explanatio
 
         entries = []
         for item in data:
-            # Create MemoryEntry
             entry = MemoryEntry(
                 lossless_restatement=item["lossless_restatement"],
                 keywords=item.get("keywords", []),
@@ -375,17 +319,12 @@ Now process the above dialogues. Return ONLY the JSON array, no other explanatio
 
         return entries
 
-    def _process_windows_parallel(self, windows: List[List[Dialogue]]):
-        """
-        Process multiple windows in parallel using ThreadPoolExecutor
-        """
+    def _process_windows_parallel(self, windows: list[list[Dialogue]]):
         all_entries = []
 
-        # Use ThreadPoolExecutor for parallel processing
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=self.max_parallel_workers
         ) as executor:
-            # Submit all window processing tasks
             future_to_window = {}
             for i, window in enumerate(windows):
                 dialogue_ids = [d.dialogue_id for d in window]
@@ -394,7 +333,6 @@ Now process the above dialogues. Return ONLY the JSON array, no other explanatio
                 )
                 future_to_window[future] = (window, i + 1)
 
-            # Collect results as they complete
             for future in concurrent.futures.as_completed(future_to_window):
                 window, window_num = future_to_window[future]
                 try:
@@ -406,7 +344,6 @@ Now process the above dialogues. Return ONLY the JSON array, no other explanatio
                 except Exception as e:
                     print(f"[Parallel Processing] Window {window_num} failed: {e}")
 
-        # Store all entries to database in batch
         if all_entries:
             print(
                 f"\n[Parallel Processing] Storing {len(all_entries)} entries to database..."
@@ -414,42 +351,32 @@ Now process the above dialogues. Return ONLY the JSON array, no other explanatio
             self.vector_store.add_entries(all_entries)
             self.processed_count += sum(len(window) for window in windows)
 
-            # Update previous entries (use last window's entries for context)
             if all_entries:
-                self.previous_entries = all_entries[
-                    -10:
-                ]  # Keep last 10 entries for context
+                self.previous_entries = all_entries[-10:]
 
         print(f"[Parallel Processing] Completed processing {len(windows)} windows")
 
     def _generate_memory_entries_worker(
-        self, window: List[Dialogue], dialogue_ids: List[int], window_num: int
-    ) -> List[MemoryEntry]:
-        """
-        Worker function for parallel processing of a single batch (full window or remaining dialogues)
-        """
+        self, window: list[Dialogue], dialogue_ids: list[int], window_num: int
+    ) -> list[MemoryEntry]:
         batch_size = len(window)
         batch_type = (
-            "full window" if batch_size == self.window_size else f"remaining batch"
+            "full window" if batch_size == self.window_size else "remaining batch"
         )
         print(
             f"[Worker {window_num}] Processing {batch_type} with {batch_size} dialogues"
         )
 
-        # Build dialogue text
         dialogue_text = "\n".join([str(d) for d in window])
 
-        # Build context (shared across all workers - this is fine for parallel processing)
         context = ""
         if self.previous_entries:
             context = "\n[Previous Window Memory Entries (for reference to avoid duplication)]\n"
-            for entry in self.previous_entries[:3]:  # Only show first 3
+            for entry in self.previous_entries[:3]:
                 context += f"- {entry.lossless_restatement}\n"
 
-        # Build prompt
         prompt = self._build_extraction_prompt(dialogue_text, dialogue_ids, context)
 
-        # Call LLM
         messages = [
             {
                 "role": "system",
@@ -458,20 +385,18 @@ Now process the above dialogues. Return ONLY the JSON array, no other explanatio
             {"role": "user", "content": prompt},
         ]
 
-        # Retry up to 3 times if parsing fails
         max_retries = 3
+        use_json_format = getattr(settings, "USE_JSON_FORMAT", False)
         for attempt in range(max_retries):
             try:
-                # Use JSON format if configured
                 response_format = None
-                if hasattr(config, "USE_JSON_FORMAT") and config.USE_JSON_FORMAT:
+                if use_json_format:
                     response_format = {"type": "json_object"}
 
                 response = self.llm_client.chat_completion(
                     messages, temperature=0.1, response_format=response_format
                 )
 
-                # Parse response
                 entries = self._parse_llm_response(response, dialogue_ids)
                 print(f"[Worker {window_num}] Generated {len(entries)} entries")
                 return entries
