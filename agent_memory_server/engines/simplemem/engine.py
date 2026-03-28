@@ -92,6 +92,22 @@ class SimpleMemEngine:
     def process_remaining(self):
         self.memory_builder.process_remaining()
 
+    def finalize(self):
+        """Alias for process_remaining() - matches SimpleMem API."""
+        self.process_remaining()
+
+    def ask(self, question: str) -> str:
+        """
+        Ask a question - matches SimpleMem API.
+
+        Args:
+            question: User question
+
+        Returns:
+            Answer string
+        """
+        return self.generate_answer(question)
+
     def retrieve(
         self, query: str, enable_reflection: Optional[bool] = None
     ) -> list[MemoryEntry]:
