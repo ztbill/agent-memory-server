@@ -141,6 +141,7 @@ class LiteLLMEmbeddings:
         kwargs: dict[str, Any] = {
             "model": self.model,
             "input": input_texts,
+            "encoding_format": "float",
         }
         if self.api_base is not None:
             kwargs["api_base"] = self.api_base

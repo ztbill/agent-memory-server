@@ -1,25 +1,37 @@
 import asyncio
+import threading
+from typing import List
 
 from agent_memory_server.memory_vector_db_factory import (
     create_redis_memory_vector_db,
 )
 from agent_memory_server.models import MemoryRecord, MemoryTypeEnum
+from agent_memory_server.config import settings
 
 
 class VectorStoreAdapter:
     def __init__(self, namespace: str = "simplemem", user_id: str = None):
         self.namespace = namespace
         self.user_id = user_id
-        self._db = None
-        self._loop = None
+        self._local = threading.local()
 
     def _get_db(self):
-        if self._db is None:
-            from agent_memory_server.llm import LLMClient
+        # Thread-local caching: each thread has its own db instance
+        if not hasattr(self._local, "db") or self._local.db is None:
+            import os
+            import litellm
 
-            embeddings = LLMClient.create_embeddings()
-            self._db = create_redis_memory_vector_db(embeddings)
-        return self._db
+            # Set as environment variable BEFORE importing
+            os.environ["LITELLM_DROP_PARAMS"] = "True"
+            litellm.drop_params = True
+
+            # Try with minimal params - let it auto-detect dimensions
+            embeddings = litellm.embedding(
+                model=settings.embedding_model,
+            )
+
+            self._local.db = create_redis_memory_vector_db(embeddings)
+        return self._local.db
 
     def _run_async(self, coro):
         try:
@@ -120,19 +132,20 @@ class VectorStoreAdapter:
     ) -> list:
         from .memory_entry import SimpleMemMemoryEntry
         from agent_memory_server.models import SearchModeEnum
-        from agent_memory_server.filters import Namespace, UserId
+        from agent_memory_server.filters import Namespace, UserId, Entities
 
         db = self._get_db()
         search_kwargs = {
             "query": "",
             "search_mode": SearchModeEnum.SEMANTIC,
-            "entities": entities,
             "limit": top_k or 10,
         }
         if self.namespace:
             search_kwargs["namespace"] = Namespace(eq=self.namespace)
         if self.user_id:
             search_kwargs["user_id"] = UserId(eq=self.user_id)
+        if entities:
+            search_kwargs["entities"] = Entities(any=entities)
 
         results = self._run_async(db.search_memories(**search_kwargs))
         return [

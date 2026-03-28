@@ -675,8 +675,17 @@ Return ONLY the JSON, no other text.
         """
         Worker function for parallel semantic search
         """
+        import asyncio
+
         print(f"[Search {query_num}] {query}")
-        return self._semantic_search(query)
+
+        # Create new event loop for each thread
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            return self._semantic_search(query)
+        finally:
+            loop.close()
 
     def _execute_parallel_additional_searches(
         self, additional_queries: list[str], round_num: int
@@ -734,8 +743,17 @@ Return ONLY the JSON, no other text.
         """
         Worker function for parallel additional search in reflection
         """
+        import asyncio
+
         print(f"[Additional Search {query_num}] {query}")
-        return self._semantic_search(query)
+
+        # Create new event loop for each thread
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            return self._semantic_search(query)
+        finally:
+            loop.close()
 
     def _analyze_information_requirements(self, query: str) -> dict[str, Any]:
         """
