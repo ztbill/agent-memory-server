@@ -132,20 +132,27 @@ class SimpleMemEngine:
         user_id: Optional[str] = None,
         limit: int = 10,
     ):
-        from agent_memory_server.long_term_memory import search_long_term_memory
+        from agent_memory_server.long_term_memory import search_long_term_memories
         from agent_memory_server.models import SearchRequest, SearchModeEnum
+        from agent_memory_server.filters import (
+            Namespace as NamespaceFilter,
+            UserId as UserIdFilter,
+        )
 
         search_mode_enum = SearchModeEnum(search_mode)
+
+        ns = namespace or self.namespace
+        uid = user_id or self.user_id
 
         request = SearchRequest(
             text=query,
             search_mode=search_mode_enum,
-            namespace=namespace or self.namespace,
-            user_id=user_id or self.user_id,
+            namespace=NamespaceFilter(eq=ns) if ns else None,
+            user_id=UserIdFilter(eq=uid) if uid else None,
             limit=limit,
         )
 
-        return await search_long_term_memory(request)
+        return await search_long_term_memories(request)
 
     async def add_memory_native(
         self,

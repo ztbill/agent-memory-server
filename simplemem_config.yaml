@@ -1,0 +1,9 @@
+# SimpleMem Demo Configuration
+
+openai_api_base: "http://localhost:12434/engines/v1"
+openai_api_key: "dummy"
+generation_model: "ai/qwen3:8B-Q4_0"
+embedding_model: "ai/qwen3-embedding:4B"
+redis_url: "redis://localhost:6379"
+disable_auth: true
+redisvl_vector_dimensions: "1567"

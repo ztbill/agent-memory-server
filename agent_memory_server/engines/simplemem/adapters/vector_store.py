@@ -59,9 +59,9 @@ class VectorStoreAdapter:
             "limit": top_k,
         }
         if self.namespace:
-            search_kwargs["namespace"] = Namespace(self.namespace)
+            search_kwargs["namespace"] = Namespace(eq=self.namespace)
         if self.user_id:
-            search_kwargs["user_id"] = UserId(self.user_id)
+            search_kwargs["user_id"] = UserId(eq=self.user_id)
 
         results = self._run_async(db.search_memories(**search_kwargs))
         return [
@@ -91,9 +91,9 @@ class VectorStoreAdapter:
             "limit": top_k,
         }
         if self.namespace:
-            search_kwargs["namespace"] = Namespace(self.namespace)
+            search_kwargs["namespace"] = Namespace(eq=self.namespace)
         if self.user_id:
-            search_kwargs["user_id"] = UserId(self.user_id)
+            search_kwargs["user_id"] = UserId(eq=self.user_id)
 
         results = self._run_async(db.search_memories(**search_kwargs))
         return [
@@ -130,9 +130,9 @@ class VectorStoreAdapter:
             "limit": top_k or 10,
         }
         if self.namespace:
-            search_kwargs["namespace"] = Namespace(self.namespace)
+            search_kwargs["namespace"] = Namespace(eq=self.namespace)
         if self.user_id:
-            search_kwargs["user_id"] = UserId(self.user_id)
+            search_kwargs["user_id"] = UserId(eq=self.user_id)
 
         results = self._run_async(db.search_memories(**search_kwargs))
         return [
