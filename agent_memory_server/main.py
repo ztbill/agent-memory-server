@@ -15,7 +15,10 @@ from agent_memory_server.llm import (
     LLMClient,
     ModelValidationError,
 )
-from agent_memory_server.logging import get_logger
+from agent_memory_server.logging import configure_logging, get_logger
+
+# Configure logging at module load time for API server
+configure_logging()
 from agent_memory_server.utils.redis import (
     _redis_pool as connection_pool,
     get_redis_conn,

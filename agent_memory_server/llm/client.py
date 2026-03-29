@@ -11,7 +11,6 @@ affecting any code that uses this class. The backend implementation details
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
 
 from litellm import acompletion, aembedding
@@ -28,7 +27,9 @@ if TYPE_CHECKING:
     from agent_memory_server.llm.embeddings import LiteLLMEmbeddings
 
 
-logger = logging.getLogger(__name__)
+from agent_memory_server.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class LLMClient:
@@ -122,7 +123,31 @@ class LLMClient:
         # Merge provider-specific kwargs
         call_kwargs.update(kwargs)
 
+        logger.info(
+            "LLM Request",
+            extra={
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            },
+        )
+
         response = await acompletion(**call_kwargs)
+
+        logger.info(
+            "LLM Response",
+            extra={
+                "model": response.model,
+                "content": response.choices[0].message.content,
+                "finish_reason": response.choices[0].finish_reason,
+                "usage": {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                },
+            },
+        )
 
         return ChatCompletionResponse(
             content=response.choices[0].message.content or "",
@@ -173,7 +198,24 @@ class LLMClient:
         # Merge provider-specific kwargs
         call_kwargs.update(kwargs)
 
+        logger.info(
+            "Embedding Request",
+            extra={
+                "model": model,
+                "input_texts": input_texts,
+            },
+        )
+
         response = await aembedding(**call_kwargs)
+
+        logger.info(
+            "Embedding Response",
+            extra={
+                "model": response.model,
+                "num_embeddings": len(response.data),
+                "usage": {"total_tokens": response.usage.total_tokens},
+            },
+        )
 
         embeddings = [item["embedding"] for item in response.data]
 
