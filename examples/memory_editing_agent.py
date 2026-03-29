@@ -99,7 +99,7 @@ class MemoryEditingAgent:
             self._memory_client = await create_memory_client(
                 base_url=MEMORY_SERVER_URL,
                 timeout=30.0,
-                default_model_name="gpt-4o",
+                # default_model_name="gpt-4o",
             )
         return self._memory_client
 
@@ -114,10 +114,14 @@ class MemoryEditingAgent:
         logger.info(f"Available memory tools: {memory_tool_schemas.names()}")
 
         # Set up LLM with function calling
-        self.llm = ChatOpenAI(model="gpt-4o", temperature=0.3).bind_tools(
+        self.llm = (ChatOpenAI(
+            base_url="http://localhost:12434/engines/v1",
+            model="ai/qwen3:8B-Q4_0",
+            temperature=0.7)
+        .bind_tools(
             tool_dicts,
             tool_choice="auto",
-        )
+        ))
 
     async def cleanup(self):
         """Clean up resources."""
@@ -133,7 +137,7 @@ class MemoryEditingAgent:
         await client.get_or_create_working_memory(
             session_id=session_id,
             namespace=self._get_namespace(user_id),
-            model_name="gpt-4o-mini",
+            # model_name="gpt-4o-mini",
             user_id=user_id,
         )
         await client.append_messages_to_working_memory(
@@ -464,7 +468,7 @@ class MemoryEditingAgent:
         created, working_memory = await client.get_or_create_working_memory(
             session_id=session_id,
             namespace=self._get_namespace(user_id),
-            model_name="gpt-4o-mini",
+            # model_name="gpt-4o-mini",
             user_id=user_id,
         )
 
