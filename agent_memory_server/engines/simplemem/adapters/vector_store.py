@@ -18,17 +18,9 @@ class VectorStoreAdapter:
     def _get_db(self):
         # Thread-local caching: each thread has its own db instance
         if not hasattr(self._local, "db") or self._local.db is None:
-            import os
-            import litellm
+            from agent_memory_server.llm import LLMClient
 
-            # Set as environment variable BEFORE importing
-            os.environ["LITELLM_DROP_PARAMS"] = "True"
-            litellm.drop_params = True
-
-            # Try with minimal params - let it auto-detect dimensions
-            embeddings = litellm.embedding(
-                model=settings.embedding_model,
-            )
+            embeddings = LLMClient.create_embeddings()
 
             self._local.db = create_redis_memory_vector_db(embeddings)
         return self._local.db
@@ -136,8 +128,9 @@ class VectorStoreAdapter:
 
         db = self._get_db()
         search_kwargs = {
-            "query": "",
-            "search_mode": SearchModeEnum.SEMANTIC,
+            # TODO 此处可能存在问题，后续分析
+            "query": "*",
+            "search_mode": SearchModeEnum.KEYWORD,
             "limit": top_k or 10,
         }
         if self.namespace:

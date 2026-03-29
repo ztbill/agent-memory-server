@@ -79,6 +79,10 @@ def main():
 
     simplemem_demo.main()
 
+    import litellm
+
+    litellm.aclose()
+
 
 if __name__ == "__main__":
     main()
