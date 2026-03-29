@@ -80,8 +80,12 @@ def main():
     simplemem_demo.main()
 
     import litellm
+    import asyncio
 
-    litellm.aclose()
+    try:
+        asyncio.run(litellm.close_litellm_async_clients())
+    except (AttributeError, RuntimeError):
+        pass
 
 
 if __name__ == "__main__":
