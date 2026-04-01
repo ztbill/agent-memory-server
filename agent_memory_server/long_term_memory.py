@@ -535,6 +535,8 @@ async def extract_memory_structure(
     # can recreate deleted keys as orphaned hashes with only topics/entities.
     # Use HSETEX with FXX to atomically update only if the fields already
     # exist on the hash — a deleted key has no fields, so nothing is written.
+    from redis.commands.core import HashDataPersistOptions
+
     key = Keys.memory_key(memory.id)
     result = await redis.hsetex(
         key,
@@ -542,7 +544,7 @@ async def extract_memory_structure(
             "topics": encode_tag_values(merged_topics),
             "entities": encode_tag_values(merged_entities),
         },
-        data_persist_option="FXX",
+        data_persist_option=HashDataPersistOptions.FXX,
         keepttl=True,
     )
     if result == 0:
