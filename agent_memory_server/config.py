@@ -373,6 +373,13 @@ class Settings(BaseSettings):
         "agent_memory_server.memory_vector_db_factory.create_redis_memory_vector_db"
     )
 
+    # TODO 后续支持图
+    # memory_graph_factory: str = (
+    #     "agent_memory_server.graph.factory.create_networkx_memory"
+    # )
+    #
+    # enable_graph_memory: bool = False
+
     # RedisVL configuration (used by default Redis factory)
     redisvl_index_name: str = "memory_records"
 

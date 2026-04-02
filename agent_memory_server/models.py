@@ -40,11 +40,14 @@ class MemoryTypeEnum(str, Enum):
 
 
 class SearchModeEnum(str, Enum):
-    """Enum for supported long-term memory search strategies."""
-
     SEMANTIC = "semantic"
     KEYWORD = "keyword"
     HYBRID = "hybrid"
+    # TODO 后续支持图检索
+    # GRAPH = "graph"
+    # GRAPH_SEMANTIC = "graph_semantic"
+    # GRAPH_KEYWORD = "graph_keyword"
+    # GRAPH_HYBRID = "graph_hybrid"
 
 
 class SearchScoreTypeEnum(str, Enum):

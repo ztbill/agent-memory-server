@@ -1084,6 +1084,27 @@ async def index_long_term_memories(
     except Exception as e:
         logger.error(f"Error indexing memories: {e}")
         raise
+    #  TODO 后续支持图
+    # if settings.enable_graph_memory:
+    #     for memory in processed_memories:
+    #         try:
+    #             from agent_memory_server.graph.extraction import build_graph_from_memory
+    #             from agent_memory_server.graph.factory import get_memory_graph
+    #
+    #             graph = await get_memory_graph()
+    #             entities = memory.entities or []
+    #             graph_entities, graph_relations = await build_graph_from_memory(
+    #                 memory_text=memory.text,
+    #                 user_id=memory.user_id,
+    #                 namespace=memory.namespace,
+    #                 existing_entities=entities,
+    #             )
+    #             if graph_entities:
+    #                 await graph.add_entities(graph_entities)
+    #             if graph_relations:
+    #                 await graph.add_relations(graph_relations)
+    #         except Exception as graph_error:
+    #             logger.error(f"Graph memory sync error: {graph_error}")
 
     # Schedule background tasks for topic/entity extraction
     for memory in processed_memories:
