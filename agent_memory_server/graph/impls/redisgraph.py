@@ -1,3 +1,4 @@
+import json
 import logging
 
 import redis
@@ -15,35 +16,66 @@ from agent_memory_server.graph.models import (
 logger = logging.getLogger(__name__)
 
 
+def _serialize_props(props: dict) -> str:
+    return json.dumps(props) if props else "{}"
+
+
 class RedisGraphMemory(MemoryGraph):
-    NODE_LABEL = "__Entity__"
-    RELATION_LABEL = "__Relation__"
+    GRAPH_NAME = "agent_memory"
 
-    def __init__(self, redis_url: str):
+    def __init__(self, redis_url: str = "redis://localhost:6379"):
+        self._redis_url = redis_url
         self._client = redis.from_url(redis_url)
-        self._graph = self._client.graph()
+        self._graph = self._client.graph(self.GRAPH_NAME)
 
-    async def add_entities(self, entities: list[GraphEntity]) -> list[str]:
+    def _get_graph(self):
+        if not hasattr(self, "_graph") or self._graph is None:
+            self._client = redis.from_url(self._redis_url)
+            self._graph = self._client.graph(self.GRAPH_NAME)
+        return self._graph
+
+    async def add_entities(
+        self,
+        entities: list[GraphEntity],
+        user_id: str | None = None,
+        namespace: str | None = None,
+    ) -> list[str]:
+        if entities and isinstance(entities[0], tuple):
+            converted = []
+            for name, props in entities:
+                entity = GraphEntity(
+                    id=str(ulid.ULID()),
+                    name=name,
+                    properties=props,
+                    user_id=user_id,
+                    namespace=namespace,
+                )
+                converted.append(entity)
+            entities = converted
+
         entity_ids = []
         for entity in entities:
             if not entity.id:
                 entity.id = str(ulid.ULID())
 
-            cypher = f"""
-            MERGE (e:{self.NODE_LABEL} {{user_id: $user_id, name: $name}})
+            cypher = """
+            MERGE (e:Entity {user_id: $user_id, namespace: $namespace, name: $name})
             SET e.entity_type = $entity_type,
                 e.properties = $properties,
-                e.updated_at = timestamp()
+                e.entity_id = $entity_id
             RETURN id(e) as id
             """
             try:
-                result = self._graph.query(
+                graph = self._get_graph()
+                result = graph.query(
                     cypher,
                     {
-                        "user_id": entity.user_id or "",
+                        "user_id": user_id or "",
+                        "namespace": namespace or "",
                         "name": entity.name,
                         "entity_type": entity.entity_type,
-                        "properties": entity.properties,
+                        "properties": _serialize_props(entity.properties),
+                        "entity_id": entity.id,
                     },
                 )
                 if result.result_set:
@@ -54,35 +86,51 @@ class RedisGraphMemory(MemoryGraph):
 
         return entity_ids
 
-    async def add_relations(self, relations: list[GraphRelation]) -> list[str]:
+    async def add_relations(
+        self,
+        relations: list[GraphRelation],
+        user_id: str | None = None,
+        namespace: str | None = None,
+    ) -> list[str]:
+        if relations and isinstance(relations[0], tuple):
+            converted = []
+            for src, rel_type, tgt, props in relations:
+                rel = GraphRelation(
+                    id=str(ulid.ULID()),
+                    source=src,
+                    relation_type=rel_type,
+                    target=tgt,
+                    properties=props or {},
+                    user_id=user_id,
+                    namespace=namespace,
+                )
+                converted.append(rel)
+            relations = converted
+
         relation_ids = []
         for rel in relations:
             if not rel.id:
                 rel.id = str(ulid.ULID())
 
-            self._graph.query(
-                f"MERGE (s:{self.NODE_LABEL} {{name: $source}})", {"source": rel.source}
-            )
-            self._graph.query(
-                f"MERGE (t:{self.NODE_LABEL} {{name: $target}})", {"target": rel.target}
-            )
-
-            cypher = f"""
-            MATCH (s:{self.NODE_LABEL} {{name: $source}})
-            MATCH (t:{self.NODE_LABEL} {{name: $target}})
-            MERGE (s)-[r:{self.RELATION_LABEL} {{relation_type: $rel_type}}]->(t)
-            SET r.properties = $properties, r.user_id = $user_id
+            cypher = """
+            MATCH (s:Entity {name: $source, user_id: $user_id, namespace: $namespace})
+            MATCH (t:Entity {name: $target, user_id: $user_id, namespace: $namespace})
+            MERGE (s)-[r:RELATION {relation_type: $rel_type}]->(t)
+            SET r.properties = $properties, r.relation_id = $relation_id
             RETURN id(r) as id
             """
             try:
-                result = self._graph.query(
+                graph = self._get_graph()
+                result = graph.query(
                     cypher,
                     {
                         "source": rel.source,
                         "target": rel.target,
                         "rel_type": rel.relation_type,
-                        "properties": rel.properties,
-                        "user_id": rel.user_id or "",
+                        "properties": _serialize_props(rel.properties),
+                        "user_id": user_id or "",
+                        "namespace": namespace or "",
+                        "relation_id": rel.id,
                     },
                 )
                 if result.result_set:
@@ -100,34 +148,47 @@ class RedisGraphMemory(MemoryGraph):
         namespace: str | None = None,
         limit: int = 10,
     ) -> GraphSearchResults:
-        user_filter = f"e.user_id = '{user_id}'" if user_id else "true"
+        conditions = ["1=1"]
+        params = {}
+
+        if user_id:
+            conditions.append("e.user_id = $user_id")
+            params["user_id"] = user_id
+        if namespace:
+            conditions.append("e.namespace = $namespace")
+            params["namespace"] = namespace
+
+        conditions.append("toLower(e.name) CONTAINS toLower($query)")
+        params["query"] = query
+
+        where_clause = " AND ".join(conditions)
 
         cypher = f"""
-        MATCH (e:{self.NODE_LABEL})
-        WHERE {user_filter} AND e.name CONTAINS $query
-        OPTIONAL MATCH (e)-[r:{self.RELATION_LABEL}]->(related)
-        RETURN e.name as source, e.entity_type as source_type, 
+        MATCH (e:Entity)
+        WHERE {where_clause}
+        OPTIONAL MATCH (e)-[r:RELATION]->(related:Entity)
+        RETURN e.name as source, e.entity_type as source_type,
                type(r) as relationship, related.name as target,
                related.entity_type as target_type
-        LIMIT $limit
+        LIMIT {limit}
         """
 
         try:
-            result = self._graph.query(cypher, {"query": query, "limit": limit})
+            graph = self._get_graph()
+            result = graph.query(cypher, params)
 
             results = []
             for row in result.result_set:
-                if row[2]:
-                    results.append(
-                        GraphSearchResult(
-                            source=row[0] or "",
-                            source_type=row[1] or "unknown",
-                            relationship=row[2] or "related_to",
-                            target=row[3] or "",
-                            target_type=row[4] or "unknown",
-                            score=1.0,
-                        )
+                results.append(
+                    GraphSearchResult(
+                        source=row[0] or "",
+                        source_type=row[1] or "unknown",
+                        relationship=row[2] or "related_to",
+                        target=row[3] or "",
+                        target_type=row[4] or "unknown",
+                        score=1.0,
                     )
+                )
 
             return GraphSearchResults(results=results, total=len(results))
         except Exception as e:
@@ -136,8 +197,9 @@ class RedisGraphMemory(MemoryGraph):
 
     async def delete_entity(self, entity_id: str) -> bool:
         try:
-            self._graph.query(
-                f"MATCH (e:{self.NODE_LABEL}) WHERE id(e) = $id DETACH DELETE e",
+            graph = self._get_graph()
+            graph.query(
+                "MATCH (e:Entity) WHERE e.entity_id = $id DETACH DELETE e",
                 {"id": entity_id},
             )
             return True
@@ -149,11 +211,20 @@ class RedisGraphMemory(MemoryGraph):
         self, user_id: str, namespace: str | None = None
     ) -> int:
         try:
-            self._graph.query(
-                f"MATCH (e:{self.NODE_LABEL} {{user_id: $user_id}}) DETACH DELETE e",
-                {"user_id": user_id},
-            )
-            return 1
+            graph = self._get_graph()
+            if namespace:
+                result = graph.query(
+                    "MATCH (e:Entity {user_id: $user_id, namespace: $namespace}) DETACH DELETE e RETURN count(e)",
+                    {"user_id": user_id, "namespace": namespace},
+                )
+            else:
+                result = graph.query(
+                    "MATCH (e:Entity {user_id: $user_id}) DETACH DELETE e RETURN count(e)",
+                    {"user_id": user_id},
+                )
+            if result.result_set:
+                return result.result_set[0][0]
+            return 0
         except Exception as e:
             logger.error(f"Error deleting user graph: {e}")
             return 0

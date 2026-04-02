@@ -373,12 +373,19 @@ class Settings(BaseSettings):
         "agent_memory_server.memory_vector_db_factory.create_redis_memory_vector_db"
     )
 
-    # TODO 后续支持图
-    # memory_graph_factory: str = (
-    #     "agent_memory_server.graph.factory.create_networkx_memory"
-    # )
-    #
-    # enable_graph_memory: bool = False
+    # Graph memory factory - choose implementation:
+    #   - "agent_memory_server.graph.factory.create_networkx_memory" (in-memory, no external deps)
+    #   - "agent_memory_server.graph.factory.create_falkordb_memory" (FalkorDB on port 7379)
+    #   - "agent_memory_server.graph.factory.create_redisgraph_memory" (Redis with RedisGraph module)
+    memory_graph_factory: str = (
+        "agent_memory_server.graph.factory.create_networkx_memory"
+    )
+
+    enable_graph_memory: bool = False
+
+    # FalkorDB configuration (when using create_falkordb_memory)
+    falkordb_host: str = "localhost"
+    falkordb_port: int = 7379
 
     # RedisVL configuration (used by default Redis factory)
     redisvl_index_name: str = "memory_records"

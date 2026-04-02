@@ -43,6 +43,7 @@ dependencies = [
     "cachetools>=6.2.2,<7.0.0",
     "litellm>=1.75.5, <=1.82.6",  # For LiteLLM tests. Upper bound pinned: versions 1.82.7+ compromised in supply chain attack.
     "langchain-openai>=1.1.0",
+    "falkordb>=1.6.0",
 ]
 
 [project.scripts]

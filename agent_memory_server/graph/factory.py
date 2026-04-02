@@ -30,6 +30,12 @@ def create_networkx_memory() -> MemoryGraph:
     return NetworkXGraphMemory()
 
 
+def create_falkordb_memory() -> MemoryGraph:
+    from agent_memory_server.graph.impls.falkordb import FalkorDBMemory
+
+    return FalkorDBMemory(host=settings.falkordb_host, port=settings.falkordb_port)
+
+
 def create_memory_graph() -> MemoryGraph:
     factory_path = settings.memory_graph_factory
     logger.info(f"Creating memory graph using factory: {factory_path}")

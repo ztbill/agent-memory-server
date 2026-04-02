@@ -17,7 +17,7 @@
 |------|-------------------|--------|
 | 写入时机 | 与memory.add()一起双写 | 索引长期记忆时同步写入 |
 | 搜索方式 | 向量搜索 + 图增强 | 支持独立图搜索和混合检索 |
-| 图后端 | Neo4j, Memgraph等 | NetworkX (当前), RedisGraph (待支持) |
+| 图后端 | Neo4j, Memgraph等 | NetworkX, FalkorDB, RedisGraph (可选) |
 | 返回格式 | results + relations | GraphSearchResults |
 
 ---
@@ -32,12 +32,13 @@ agent_memory_server/graph/
 ├── base.py                  # 抽象基类 MemoryGraph
 ├── models.py                # 数据模型
 ├── factory.py               # 工厂模式
-├── extraction.py            # 实体/关系抽取
-├── search.py                # RRF 混合检索
+├── extraction.py           # 实体/关系抽取
+├── search.py               # RRF 混合检索
 └── impls/
     ├── __init__.py
-    ├── networkx.py         # NetworkX 实现
-    └── redisgraph.py        # RedisGraph 实现 (待)
+    ├── networkx.py          # NetworkX 实现 (内存图)
+    ├── falkordb.py         # FalkorDB 实现 (生产推荐)
+    └── redisgraph.py        # RedisGraph 实现 (待 RedisGraph 模块)
 ```
 
 ### 2.2 组件关系
@@ -461,7 +462,109 @@ async def build_from_memory(memory_text: str, user_id: str):
 
 ---
 
-## 10. 待完成项
+## 10. 测试
+
+### 10.1 运行测试
+
+```bash
+# 单元测试（模型测试，无需外部服务）
+uv run pytest tests/test_graph_memory.py -v
+
+# FalkorDB 集成测试（需要 FalkorDB 运行在端口 7379）
+uv run pytest tests/integration/test_falkordb_graph_memory.py -v
+
+# 所有测试
+uv run pytest
+
+# 带覆盖率
+uv run pytest tests/integration/test_falkordb_graph_memory.py --cov=agent_memory_server.graph --cov-report=term-missing
+```
+
+### 10.2 启动 FalkorDB
+
+```bash
+# 使用 Docker 启动 FalkorDB
+docker run -d -p 7379:6379 --name falkordb falkordb/falkordb
+
+# 或使用 docker-compose
+docker-compose up falkordb
+```
+
+### 10.3 单独运行某个测试
+
+```bash
+# 运行单个测试
+uv run pytest tests/integration/test_falkordb_graph_memory.py::TestFalkorDBGraphMemory::test_add_single_entity -v
+
+# 运行指定测试类
+uv run pytest tests/integration/test_falkordb_graph_memory.py::TestFalkorDBGraphMemory -v
+```
+
+### 10.4 交互式测试 (Python REPL)
+
+```bash
+source .venv/bin/activate
+python -c "
+import asyncio
+from agent_memory_server.graph.impls.falkordb import FalkorDBMemory
+
+async def test():
+    graph = FalkorDBMemory(port=7379)
+    
+    # 添加实体 (支持元组格式)
+    ids = await graph.add_entities(
+        [('person:alice', {'name': 'Alice', 'role': 'engineer'})],
+        user_id='test-user',
+        namespace='test-ns'
+    )
+    print(f'Created entity: {ids}')
+    
+    # 添加关系 (元组格式: source, rel_type, target, props)
+    await graph.add_relations(
+        [('person:alice', 'knows', 'person:bob', {'since': '2024'})],
+        user_id='test-user',
+        namespace='test-ns'
+    )
+    
+    # 搜索
+    results = await graph.search('Alice', user_id='test-user', namespace='test-ns')
+    print(f'Found {len(results.results)} results')
+    for r in results.results:
+        print(f'  {r.source} --[{r.relationship}]--> {r.target}')
+    
+    # 删除
+    await graph.delete_entity(ids[0])
+
+asyncio.run(test())
+"
+```
+
+### 10.5 测试覆盖
+
+| 测试文件 | 测试内容 | 依赖 |
+|---------|---------|------|
+| `tests/test_graph_memory.py` | GraphEntity, GraphRelation, GraphSearchResult 模型 | 无 |
+| `tests/integration/test_falkordb_graph_memory.py` | FalkorDB 完整操作 (11个测试) | FalkorDB |
+
+### 10.6 FalkorDB 集成测试用例
+
+```
+test_add_single_entity          # 添加单个实体
+test_add_multiple_entities      # 批量添加实体
+test_add_single_relation        # 添加单条关系
+test_add_multiple_relations     # 批量添加关系
+test_search_finds_entity        # 按名称搜索实体
+test_search_with_relations      # 搜索返回关联关系
+test_search_respects_user_isolation  # 用户隔离
+test_search_respects_namespace_isolation  # 命名空间隔离
+test_delete_entity             # 删除实体
+test_delete_user_graph          # 删除用户全部数据
+test_mem0_compatible_relation   # Mem0 兼容性格式
+```
+
+---
+
+## 11. 待完成项
 
 1. [ ] 恢复 long_term_memory.py 中的图同步写入代码
 2. [ ] 完成混合检索在 search_memories 中的集成
