@@ -162,6 +162,9 @@ periodic_forget_long_term_memories	周期性遗忘任务
 ##### 异步任务管理
 [任务管理机制](./docs/task-processing-principle.md)
 
+##### 图存储
+[图存储机制](./docs/graph-memory-design.md)
+
 ### 不同产品间的对比
 
 [产品横向对比](./docs/memory-comparison.md)
