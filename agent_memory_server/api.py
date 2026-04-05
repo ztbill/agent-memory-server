@@ -506,7 +506,7 @@ async def put_working_memory_core(
         )
     )
 
-    # Return WorkingMemoryResponse with percentage values (no new_session for PUT)
+    # Return WorkingMemoryResponse with percentage values (no new_session for 645)
     updated_memory_data = updated_memory.model_dump()
     updated_memory_data["context_percentage_total_used"] = total_percentage
     updated_memory_data["context_percentage_until_summarization"] = (

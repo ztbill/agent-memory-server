@@ -340,6 +340,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = None
     openai_api_base: str | None = None
     anthropic_api_base: str | None = None
+    embedding_api_base: str | None = None
     generation_model: str = "gpt-5"
     embedding_model: str = "text-embedding-3-small"
 

@@ -38,6 +38,8 @@ def load_config(config_file: str):
             os.environ["DISABLE_AUTH"] = "true" if value else "false"
         elif key == "redisvl_vector_dimensions":
             os.environ["REDISVL_VECTOR_DIMENSIONS"] = str(value)
+        elif key == "embedding_api_base":
+            os.environ["EMBEDDING_API_BASE"] = str(value)
 
     # Configure LiteLLM - must be done before importing other modules
     os.environ["OPENAI_API_KEY"] = config.get("openai_api_key", "dummy")
@@ -61,6 +63,7 @@ def load_config(config_file: str):
 
     print(f"Loaded config from: {config_file}")
     print(f"  API Base: {config.get('openai_api_base')}")
+    print(f"  Embedding API Base: {config.get('embedding_api_base')}")
     print(f"  Model: {config.get('generation_model')}")
     print(f"  Embedding: {config.get('embedding_model')}")
     print()

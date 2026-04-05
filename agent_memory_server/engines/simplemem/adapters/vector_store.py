@@ -1,5 +1,6 @@
 import asyncio
 import threading
+from datetime import datetime
 
 from agent_memory_server.memory_vector_db_factory import (
     create_redis_memory_vector_db,
@@ -42,6 +43,18 @@ class VectorStoreAdapter:
                 all_entities.extend(entry.persons)
             if entry.location:
                 all_entities.append(entry.location)
+
+            event_date = None
+            if entry.timestamp:
+                try:
+                    event_date = datetime.fromisoformat(
+                        entry.timestamp.replace("Z", "+00:00")
+                    )
+                except ValueError:
+                    pass
+
+            memory_type = MemoryTypeEnum.EPISODIC
+
             record = MemoryRecord(
                 id=entry.entry_id,
                 text=entry.lossless_restatement,
@@ -49,7 +62,8 @@ class VectorStoreAdapter:
                 user_id=self.user_id,
                 topics=[entry.topic] if entry.topic else None,
                 entities=all_entities if all_entities else None,
-                memory_type=MemoryTypeEnum.SEMANTIC,
+                event_date=event_date,
+                memory_type=memory_type,
             )
             records.append(record)
         self._run_async(db.add_memories(records))

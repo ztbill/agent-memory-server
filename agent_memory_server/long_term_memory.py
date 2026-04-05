@@ -349,6 +349,9 @@ async def run_delayed_extraction(
         return 0
 
     # Get working memory to extract from
+    # TODO(memory-extraction-performance): Note extract_memories_from_session_thread
+    # will fetch working_memory again. Could pass fetched memory to avoid double-fetch.
+    # See: docs/todo/memory-extraction-performance.md
     working_memory = await get_working_memory(
         session_id=session_id, namespace=namespace, user_id=user_id
     )
@@ -374,6 +377,9 @@ async def run_delayed_extraction(
     )
 
     try:
+        # TODO(memory-extraction-performance): This fetches working_memory AGAIN.
+        # Should reuse the memory already fetched above, and limit context to:
+        #   - Recent N extracted messages + Unextracted messages
         extracted_memories = await extract_memories_from_session_thread(
             session_id=session_id,
             namespace=namespace,
@@ -438,6 +444,11 @@ async def extract_memories_from_session_thread(
     from agent_memory_server.working_memory import get_working_memory
 
     # Get the complete working memory thread
+    # TODO(memory-extraction-performance): This fetches ALL messages without limit.
+    # For long conversations, consider passing only:
+    #   - Recent N extracted messages (for contextual grounding)
+    #   - Unextracted messages (for extraction)
+    # See: docs/todo/memory-extraction-performance.md
     working_memory = await get_working_memory(
         session_id=session_id, namespace=namespace, user_id=user_id
     )
@@ -447,6 +458,8 @@ async def extract_memories_from_session_thread(
         return []
 
     # Build full conversation context from all messages
+    # TODO(memory-extraction-performance): This builds context from ALL messages.
+    # When there are many messages, only recent messages + new messages should be used.
     conversation_messages = []
     for msg in working_memory.messages:
         # Include role and content for better context

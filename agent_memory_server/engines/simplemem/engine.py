@@ -178,7 +178,7 @@ class SimpleMemEngine:
         user_id: Optional[str] = None,
         topics: Optional[list[str]] = None,
         entities: Optional[list[str]] = None,
-        memory_type: str = "semantic",
+        memory_type: str = "episodic",
     ) -> str:
         from agent_memory_server.long_term_memory import (
             index_long_term_memories,

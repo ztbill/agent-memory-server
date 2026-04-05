@@ -155,6 +155,16 @@ class HybridRetriever:
         print(
             f"[Planning] Found {len(merged_results)} unique results (semantic + keyword + structured)"
         )
+        print("\n[Final Results] 最终检索到的记忆:")
+        for i, entry in enumerate(merged_results, 1):
+            print(f"  [{i}] {entry.lossless_restatement}")
+            if entry.timestamp:
+                print(f"      时间: {entry.timestamp}")
+            if entry.location:
+                print(f"      地点: {entry.location}")
+            if entry.persons:
+                print(f"      人物: {entry.persons}")
+        print()
 
         # Step 5: Optional reflection-based additional retrieval
         # Use override parameter if provided, otherwise use global setting
@@ -653,6 +663,14 @@ Return ONLY the JSON, no other text.
                         print(
                             f"[Parallel Search] Query {query_num} completed: {len(results)} results"
                         )
+                        for j, entry in enumerate(results, 1):
+                            print(f"  [{j}] {entry.lossless_restatement}")
+                            if entry.timestamp:
+                                print(f"      时间: {entry.timestamp}")
+                            if entry.location:
+                                print(f"      地点: {entry.location}")
+                            if entry.persons:
+                                print(f"      人物: {entry.persons}")
                     except Exception as e:
                         print(f"[Parallel Search] Query {query_num} failed: {e}")
 

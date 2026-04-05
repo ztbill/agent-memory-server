@@ -295,8 +295,10 @@ class LLMClient:
             kwargs["api_key"] = settings.openai_api_key
 
         # Pass API base if configured
-        if settings.openai_api_base:
-            kwargs["api_base"] = settings.openai_api_base
+        # Use embedding_api_base if set, otherwise fall back to openai_api_base
+        api_base = settings.embedding_api_base or settings.openai_api_base
+        if api_base:
+            kwargs["api_base"] = api_base
 
         return LiteLLMEmbeddings(model=model, dimensions=dimensions, **kwargs)
 

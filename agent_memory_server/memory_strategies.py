@@ -16,6 +16,7 @@ from agent_memory_server.prompt_security import (
     secure_format_prompt,
     validate_custom_prompt,
 )
+from agent_memory_server.utils.json_parser import parse_json_with_fallback
 
 
 logger = get_logger(__name__)
@@ -175,7 +176,7 @@ class DiscreteMemoryStrategy(BaseMemoryStrategy):
                     response_format={"type": "json_object"},
                 )
                 try:
-                    response_data = json.loads(response.content)
+                    response_data = parse_json_with_fallback(response.content, logger)
                     return response_data.get("memories", [])
                 except json.JSONDecodeError:
                     logger.error(f"Error decoding JSON: {response.content}")
@@ -183,7 +184,6 @@ class DiscreteMemoryStrategy(BaseMemoryStrategy):
         return None
 
     def get_extraction_description(self) -> str:
-        """Get description of discrete memory extraction strategy."""
         return (
             "Extracts discrete semantic (factual) and episodic (time-oriented) facts from messages. "
             "Semantic memories include user preferences and general knowledge. "
@@ -267,7 +267,7 @@ class SummaryMemoryStrategy(BaseMemoryStrategy):
                     response_format={"type": "json_object"},
                 )
                 try:
-                    response_data = json.loads(response.content)
+                    response_data = parse_json_with_fallback(response.content, logger)
                     return response_data.get("memories", [])
                 except json.JSONDecodeError:
                     logger.error(f"Error decoding JSON: {response.content}")
@@ -360,7 +360,7 @@ class UserPreferencesMemoryStrategy(BaseMemoryStrategy):
                     response_format={"type": "json_object"},
                 )
                 try:
-                    response_data = json.loads(response.content)
+                    response_data = parse_json_with_fallback(response.content, logger)
                     return response_data.get("memories", [])
                 except json.JSONDecodeError:
                     logger.error(f"Error decoding JSON: {response.content}")
@@ -444,10 +444,9 @@ class CustomMemoryStrategy(BaseMemoryStrategy):
                     response_format={"type": "json_object"},
                 )
                 try:
-                    response_data = json.loads(response.content)
+                    response_data = parse_json_with_fallback(response.content, logger)
                     memories = response_data.get("memories", [])
 
-                    # Filter and validate output memories for security
                     validated_memories = []
                     for memory in memories:
                         if self._validate_memory_output(memory):
